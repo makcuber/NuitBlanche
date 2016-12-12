@@ -21,9 +21,9 @@ const int numberOfPIRs=1; //defines the number of PIR's in the system
 int motorPins[numberOfMotors]; //array to store motor I/O pin numbers
 int LEDPins[numberOfLEDs]; //array to store led I/O pin numbers
 int PIRPins[numberOfLEDs]; //array to store PIR I/O pin numbers
-int defaultLEDPins[]={4,5,6,7,8,9,10,11,12,13}; //defines the default LED pin numbers (number of pins can differ from value of "numberOfLEDs", extras will be ignored during configuration)
+int defaultLEDPins[]={4}; //defines the default LED pin numbers (number of pins can differ from value of "numberOfLEDs", extras will be ignored during configuration)
 int defaultMotorPins[]={3}; //defines the default Motor pin numbers (number of pins can differ from value of "numberOfMotors", extras will be ignored during configuration)
-int defaultPIRPins[numberOfPIRs]={2}; //defines the default PIR pin numbers (number of pins can differ from value of "numberOfPIRs", extras will be ignored during configuration)
+int defaultPIRPins[]={2}; //defines the default PIR pin numbers (number of pins can differ from value of "numberOfPIRs", extras will be ignored during configuration)
 
 //general variables
 bool motorState[numberOfMotors]; //array to store current state of the motors
@@ -33,11 +33,12 @@ bool pirOutput[numberOfPIRs]; //array to store the output of each PIR sensor
 bool defaultLEDState=true; //defines the default state for the LED's
 bool defaultMotorState=false; //defines the default state for the motors
 int maxRPM[numberOfMotors]={10000}; //defines the maximum RPM of each of the motors
-int defaultTargetMotorSpeed=maxRPM[0]; //defines the default target speed of the motors
+int defaultUpperTargetMotorSpeed=maxRPM[0]; //defines the default upper target speed of the motors
+int defaultLowerTargetMotorSpeed=0; //defines the default lower target speed of the motors
 int runMode=2; //defines which mode to run the system in
 int maxDelay=1000; //defines the maximum delay in milliseconds between increments of the motor speed ramping function
 int defaultDelay=0; //defines the default delay in milliseconds between increments for ramping the speed of a motor
-int defaultRampIncrement=10; //defines the default ramping increment for ramping the speed of a motor
+int defaultRampIncrement=25; //defines the default ramping increment for ramping the speed of a motor
 int rampIncrement[numberOfMotors]; //stores the ramping increment value for each motor;
 
 //command processing variables
@@ -48,7 +49,6 @@ char seperator=','; //character to use to differentiate between the command and 
 char delimiter='\n'; //character to use to signify the end of an incoming serial String (command)
 bool cmdsEnabled=true; //boolean to store weather commands are enabled and will be processed or not
 int baudRate=9600; //integer to store the baud rate to use for serial communications (similar to transfer speed)
-
 
 //menu variables
 int consoleWidth=25; //defines the default number of characters in the width of serial communications output console
@@ -73,12 +73,13 @@ void setup() {
   //configure LED's
   //update LEDPins array with default pin values and set new pins numbers as outputs
   for(int i=0;i<numberOfLEDs;i++){
-    configureMotor(i,defaultLEDPins[i]);
+    configureLED(i,defaultLEDPins[i]);
   }
 
   //configure PIR's
   //update PIRPins array with default pin values and set new pins numbers as inputs
   for(int i=0;i<numberOfPIRs;i++){
+    Serial.println(defaultPIRPins[i]);
     configurePIR(i,defaultPIRPins[i]);
   }
 }
@@ -97,9 +98,14 @@ void loop() {
   } else if (runMode==2){
     //run system using ramp up/down speeds for motors
     bool pirOutput_old=pirOutput[0]; //store the current PIR output in a temporary variable
+    Serial.println(pirOutput_old);
+    Serial.println(getPIRState(0));
+    Serial.println();
     //check if the PIR output has changed since the last time it was checked
-    if(pirOutput_old!=getPIRState(0)){
-      rampMotorSpeed(0); //ramp the motor speed
+    if((pirOutput_old==false)&&(getPIRState(0))==true){    
+        rampMotorSpeedUp(0); //ramp the motor speed     
+    }else if((pirOutput_old==true)&&(getPIRState(0))==false){    
+        rampMotorSpeedDown(0); //ramp the motor speed     
     }
   }
 }
@@ -156,7 +162,7 @@ void configureDigitalInputPin(int pinNumber, bool *storedState){
 //Configure PIR pin
 void configurePIR(int pirNumber, int pinNumber){
   //check if specified pirNumber is valid
-  if((pirNumber>=0)&(pirNumber<numberOfPIRs)){
+  if((pirNumber>=0)&&(pirNumber<numberOfPIRs)){
     //set "pirPin" array index "pirID" to equal new pin number
     PIRPins[pirNumber] = pinNumber;
 
@@ -167,9 +173,10 @@ void configurePIR(int pirNumber, int pinNumber){
 //get specific PIR value
 bool getPIRState(int pirNumber){
   //check if specified pirNumber is valid
-  if((pirNumber>=0)&(pirNumber<numberOfPIRs)){
+  if((pirNumber>=0)&&(pirNumber<numberOfPIRs)){
     //return the value new output of the specified PIR and update the stored output
-    return pirOutput[pirNumber]=digitalRead(pirNumber);
+    pirOutput[pirNumber]=digitalRead(PIRPins[pirNumber]);
+    return pirOutput[pirNumber];
   }
 
   //return false if specified pirNumber is out of range
@@ -183,7 +190,7 @@ bool getPIRState(int pirNumber){
 //Configure specific motor pin
 void configureMotor(int motorNumber, int pinNumber){
   //check if specified pirNumber is valid
-  if((motorNumber>=0)&(motorNumber<numberOfMotors)){
+  if((motorNumber>=0)&&(motorNumber<numberOfMotors)){
     //set "motorPins" array index "motorNumber" to equal "pinNumber"
     motorPins[motorNumber] = pinNumber;
 
@@ -197,7 +204,7 @@ void configureMotor(int motorNumber, int pinNumber){
 //set motor on or off (speed=0 or speed=max)
 void setMotorState(int motorNumber, bool state){
   //check if specified motorNumber is valid
-  if((motorNumber>=0)&(motorNumber<numberOfMotors)){
+  if((motorNumber>=0)&&(motorNumber<numberOfMotors)){
     //pass specified motor pin number and stored motor state along with the new state to "setOuput" function
     setDigitalOutput(motorPins[motorNumber], state, &motorState[motorNumber]);
   }
@@ -205,7 +212,7 @@ void setMotorState(int motorNumber, bool state){
 //convert an RPM value to analog output range
 int rpmToAnalog(int motorNumber, int rpm){
   //check if specified motorNumber is valid
-  if((motorNumber>=0)&(motorNumber<numberOfMotors)){
+  if((motorNumber>=0)&&(motorNumber<numberOfMotors)){
       //map the RPM range of the specified motor to the range of the analog output
       return map(rpm,0,maxRPM[motorNumber],0,255);
   }
@@ -216,9 +223,9 @@ int rpmToAnalog(int motorNumber, int rpm){
 //set the speed of a specific motor
 void setMotorSpeed(int motorNumber, int speed){
   //check if specified motorNumber is valid
-  if((motorNumber>=0)&(motorNumber<numberOfMotors)){
+  if((motorNumber>=0)&&(motorNumber<numberOfMotors)){
     //check if specified speed is valid
-    if((speed>=0)&(speed<maxRPM[motorNumber])){
+    if((speed>=0)&&(speed<maxRPM[motorNumber])){
       //pass specified motor pin number and stored motor speed along with the new state to "setOuput" function
       setAnalogOutput(motorPins[motorNumber], rpmToAnalog(motorNumber, speed), &motorSpeed[motorNumber]);
     }
@@ -227,7 +234,7 @@ void setMotorSpeed(int motorNumber, int speed){
 //toggle motor state
 void toggleMotorState(int motorNumber){
   //check if specified motorNumber is valid
-  if((motorNumber>=0)&(motorNumber<numberOfMotors)){
+  if((motorNumber>=0)&&(motorNumber<numberOfMotors)){
     //pass specified motor pin number and stored motor state to "toggleOuput" function
     toggleDigialOutput(motorPins[motorNumber], &motorState[motorNumber]);
   }
@@ -235,28 +242,51 @@ void toggleMotorState(int motorNumber){
 //set a specific motor's maximum RPM
 void setMaxRPM(int motorNumber, int max){
   //check if specified motorNumber is valid
-  if((motorNumber>=0)&(motorNumber<numberOfMotors)){
+  if((motorNumber>=0)&&(motorNumber<numberOfMotors)){
     maxRPM[motorNumber]=max;
   }
 }
 //change a motors speed gradually over time
 void rampMotorSpeed(int motorNumber, int targetSpeed, int increment, int delayTime){
   //check if specified motorNumber is valid
-  if((motorNumber>=0)&(motorNumber<numberOfMotors)){
+  if((motorNumber>=0)&&(motorNumber<numberOfMotors)){
+    Serial.println();
+    Serial.println(motorSpeed[motorNumber]);
+    Serial.println(targetSpeed);
+    Serial.println(increment);
+    Serial.println(delayTime);
     //determine weather the speed needs to ramp up or down
     if(motorSpeed[motorNumber]<targetSpeed){
+      Serial.println();
+      Serial.println("ramp up");
+      Serial.println();
+      delay(1000);
       //start at initial motor speed, incrementing up by the specified value until the targetSpeed is reached
-      for(int i=motorSpeed[motorNumber];i<targetSpeed;i+increment){
-        setMotorSpeed(motorNumber,rpmToAnalog(motorNumber,i));
-        if((delayTime>1)&(delayTime<maxDelay)){
+      for(int i=motorSpeed[motorNumber];i<targetSpeed;i+=increment){
+        Serial.print(i);
+        Serial.print(',');
+        Serial.print(rpmToAnalog(motorNumber,i));
+        Serial.print('\n');
+        
+        setAnalogOutput(motorPins[motorNumber], rpmToAnalog(motorNumber, i), &motorSpeed[motorNumber]);
+        if((delayTime>1)&&(delayTime<maxDelay)){
           delay(delayTime);
         }
       }
     } else if(motorSpeed[motorNumber]>targetSpeed){
+      Serial.println();
+      Serial.println("ramp down");
+      Serial.println();
+      delay(1000);
       //start at initial motor speed, incrementing down by the specified value until the targetSpeed is reached
-      for(int i=motorSpeed[motorNumber];i>targetSpeed;i-increment){
-        setMotorSpeed(motorNumber,rpmToAnalog(motorNumber,i));
-        if((delayTime>1)&(delayTime<maxDelay)){
+      for(int i=motorSpeed[motorNumber];i>targetSpeed;i-=increment){
+        Serial.print(i);
+        Serial.print(',');
+        Serial.print(rpmToAnalog(motorNumber,i));
+        Serial.print('\n');
+        setAnalogOutput(motorPins[motorNumber], rpmToAnalog(motorNumber, i), &motorSpeed[motorNumber]);
+        
+        if((delayTime>1)&&(delayTime<maxDelay)){
           delay(delayTime);
         }
       }
@@ -269,9 +299,13 @@ void rampMotorSpeed(int motorNumber, int targetSpeed, int increment, int delayTi
 void rampMotorSpeed(int motorNumber, int targetSpeed){
   rampMotorSpeed(motorNumber, targetSpeed, defaultRampIncrement, defaultDelay);
 }
-//call rampMotorSpeed function using the default target motor speed, increment and delay values
-void rampMotorSpeed(int motorNumber){
-  rampMotorSpeed(motorNumber, defaultTargetMotorSpeed, defaultRampIncrement, defaultDelay);
+//call rampMotorSpeed function using the default upper target motor speed, increment and delay values
+void rampMotorSpeedUp(int motorNumber){
+  rampMotorSpeed(motorNumber, defaultUpperTargetMotorSpeed, defaultRampIncrement, defaultDelay);
+}
+//call rampMotorSpeed function using the default lower target motor speed, increment and delay values
+void rampMotorSpeedDown(int motorNumber){
+  rampMotorSpeed(motorNumber, defaultLowerTargetMotorSpeed, defaultRampIncrement, defaultDelay);
 }
 
 //
@@ -281,7 +315,7 @@ void rampMotorSpeed(int motorNumber){
 //Configure specific LED pin
 void configureLED(int LEDNumber, int pinNumber){
   //check if specified LEDNumber is valid
-  if((LEDNumber>=0)&(LEDNumber<numberOfLEDs)){
+  if((LEDNumber>=0)&&(LEDNumber<numberOfLEDs)){
     //set "LEDPins" array index "LEDNumber" to equal "pinNumber"
     LEDPins[LEDNumber] = pinNumber;
   
