@@ -12,6 +12,8 @@ Updated: 7/11/12/2016
 //Variable Definitions
 //
 
+bool debug=false;
+
 //constants (values that can not be changed while the system is running)
 const int numberOfMotors=1; //defines the number of motors in the system
 const int numberOfLEDs=1; //defines the number of LED's in the system
@@ -23,7 +25,7 @@ int LEDPins[numberOfLEDs]; //array to store led I/O pin numbers
 int PIRPins[numberOfLEDs]; //array to store PIR I/O pin numbers
 int defaultLEDPins[]={4}; //defines the default LED pin numbers (number of pins can differ from value of "numberOfLEDs", extras will be ignored during configuration)
 int defaultMotorPins[]={3}; //defines the default Motor pin numbers (number of pins can differ from value of "numberOfMotors", extras will be ignored during configuration)
-int defaultPIRPins[]={2}; //defines the default PIR pin numbers (number of pins can differ from value of "numberOfPIRs", extras will be ignored during configuration)
+int defaultPIRPins[]={7}; //defines the default PIR pin numbers (number of pins can differ from value of "numberOfPIRs", extras will be ignored during configuration)
 
 //general variables
 bool motorState[numberOfMotors]; //array to store current state of the motors
@@ -38,7 +40,7 @@ int defaultLowerTargetMotorSpeed=0; //defines the default lower target speed of 
 int runMode=2; //defines which mode to run the system in
 int maxDelay=1000; //defines the maximum delay in milliseconds between increments of the motor speed ramping function
 int defaultDelay=0; //defines the default delay in milliseconds between increments for ramping the speed of a motor
-int defaultRampIncrement=25; //defines the default ramping increment for ramping the speed of a motor
+int defaultRampIncrement=500; //defines the default ramping increment for ramping the speed of a motor
 int rampIncrement[numberOfMotors]; //stores the ramping increment value for each motor;
 
 //command processing variables
@@ -90,21 +92,19 @@ void loop() {
   if(cmdsEnabled){
     processCmds();
   }
-
+  Serial.println(getPIRState(0));
+  Serial.println();
+  //delay(100);
   //determine which mode to run the system in
   if(runMode==1){
     //run system using basic on/off control for the motors
-    setMotorState(0,getPIRState(0)); //set the motor state to the output of the PIR sensor
+    setMotorState(0,pirOutput[0]); //set the motor state to the output of the PIR sensor
   } else if (runMode==2){
     //run system using ramp up/down speeds for motors
-    bool pirOutput_old=pirOutput[0]; //store the current PIR output in a temporary variable
-    Serial.println(pirOutput_old);
-    Serial.println(getPIRState(0));
-    Serial.println();
     //check if the PIR output has changed since the last time it was checked
-    if((pirOutput_old==false)&&(getPIRState(0))==true){    
+    if(pirOutput[0]){    
         rampMotorSpeedUp(0); //ramp the motor speed     
-    }else if((pirOutput_old==true)&&(getPIRState(0))==false){    
+    }else{    
         rampMotorSpeedDown(0); //ramp the motor speed     
     }
   }
@@ -250,11 +250,13 @@ void setMaxRPM(int motorNumber, int max){
 void rampMotorSpeed(int motorNumber, int targetSpeed, int increment, int delayTime){
   //check if specified motorNumber is valid
   if((motorNumber>=0)&&(motorNumber<numberOfMotors)){
-    Serial.println();
-    Serial.println(motorSpeed[motorNumber]);
-    Serial.println(targetSpeed);
-    Serial.println(increment);
-    Serial.println(delayTime);
+    if(debug){
+      Serial.println();
+      Serial.println(motorSpeed[motorNumber]);
+      Serial.println(targetSpeed);
+      Serial.println(increment);
+      Serial.println(delayTime);
+     }
     //determine weather the speed needs to ramp up or down
     if(motorSpeed[motorNumber]<targetSpeed){
       Serial.println();
@@ -262,7 +264,7 @@ void rampMotorSpeed(int motorNumber, int targetSpeed, int increment, int delayTi
       Serial.println();
       delay(1000);
       //start at initial motor speed, incrementing up by the specified value until the targetSpeed is reached
-      for(int i=motorSpeed[motorNumber];i<targetSpeed;i+=increment){
+      for(int i=motorSpeed[motorNumber];i<=targetSpeed;i+=increment){
         Serial.print(i);
         Serial.print(',');
         Serial.print(rpmToAnalog(motorNumber,i));
@@ -279,7 +281,7 @@ void rampMotorSpeed(int motorNumber, int targetSpeed, int increment, int delayTi
       Serial.println();
       delay(1000);
       //start at initial motor speed, incrementing down by the specified value until the targetSpeed is reached
-      for(int i=motorSpeed[motorNumber];i>targetSpeed;i-=increment){
+      for(int i=motorSpeed[motorNumber];i>=targetSpeed;i-=increment){
         Serial.print(i);
         Serial.print(',');
         Serial.print(rpmToAnalog(motorNumber,i));
