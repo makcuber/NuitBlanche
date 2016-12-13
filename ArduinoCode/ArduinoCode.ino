@@ -15,36 +15,40 @@ Updated: 1/12/12/2016
 //
 //Variable Definitions
 //
+tableObj t(1);
 
-bool debugEnabled = false; //toggles debugging output over serial communications
+bool debugEnabled = true; //toggles debugging output over serial communications
 
 //constants (values that can not be changed while the system is running)
 const int numberOfMotors = 1; //defines the number of motors in the system
 const int numberOfLEDs = 1; //defines the number of LED's in the system
 const int numberOfPIRs = 1; //defines the number of PIR's in the system
 
+//limit variables
+int maxRPM[numberOfMotors] = {10000}; //defines the maximum RPM of each of the motors
+int maxDelay = 1000; //defines the maximum delay in milliseconds between increments of the motor speed ramping function
+
 //pinout
 int motorPins[numberOfMotors]; //array to store motor I/O pin numbers
 int LEDPins[numberOfLEDs]; //array to store led I/O pin numbers
 int PIRPins[numberOfLEDs]; //array to store PIR I/O pin numbers
+
+//defaults
 int defaultLEDPins[] = {4}; //defines the default LED pin numbers (number of pins can differ from value of "numberOfLEDs", extras will be ignored during configuration)
 int defaultMotorPins[] = {3}; //defines the default Motor pin numbers (number of pins can differ from value of "numberOfMotors", extras will be ignored during configuration)
 int defaultPIRPins[] = {7}; //defines the default PIR pin numbers (number of pins can differ from value of "numberOfPIRs", extras will be ignored during configuration)
+int defaultUpperTargetMotorSpeed = maxRPM[0]; //defines the default upper target speed of the motors
+int defaultLowerTargetMotorSpeed = 0; //defines the default lower target speed of the motors
+int defaultRampDelay = 0; //defines the default delay in milliseconds between increments for ramping the speed of a motor
+int defaultRampIncrement = 500; //defines the default ramping increment for ramping the speed of a motor
+bool defaultLEDState = true; //defines the default state for the LED's
+bool defaultMotorState = false; //defines the default state for the motors
 
-//general variables
+//state variables
 bool motorState[numberOfMotors]; //array to store current state of the motors
 bool LEDState[numberOfLEDs]; //array to store current state of the LED's
 int motorSpeed[numberOfMotors]; //array to store the speed of each motor
 bool pirOutput[numberOfPIRs]; //array to store the output of each PIR sensor
-bool defaultLEDState = true; //defines the default state for the LED's
-bool defaultMotorState = false; //defines the default state for the motors
-int maxRPM[numberOfMotors] = {10000}; //defines the maximum RPM of each of the motors
-int defaultUpperTargetMotorSpeed = maxRPM[0]; //defines the default upper target speed of the motors
-int defaultLowerTargetMotorSpeed = 0; //defines the default lower target speed of the motors
-int runMode = 2; //defines which mode to run the system in
-int maxDelay = 1000; //defines the maximum delay in milliseconds between increments of the motor speed ramping function
-int defaultRampDelay = 0; //defines the default delay in milliseconds between increments for ramping the speed of a motor
-int defaultRampIncrement = 500; //defines the default ramping increment for ramping the speed of a motor
 int rampIncrement[numberOfMotors]; //stores the ramping increment value for each motor;
 
 //command processing variables
@@ -55,6 +59,7 @@ char seperator = ','; //character to use to differentiate between the command an
 char delimiter = '\n'; //character to use to signify the end of an incoming serial String (command)
 bool cmdsEnabled = true; //boolean to store weather commands are enabled and will be processed or not
 int baudRate = 9600; //integer to store the baud rate to use for serial communications (similar to transfer speed)
+int runMode = 0; //defines which mode to run the system in
 
 //menu variables
 int consoleWidth = 25; //defines the default number of characters in the width of serial communications output console
@@ -91,6 +96,9 @@ void setup() {
     debug("Default PIR Pin: " + defaultPIRPins[i]);
     configurePIR(i, defaultPIRPins[i]);
   }
+  if (cmdsEnabled) {
+    showMenu(0);
+  }
 }
 
 //repeat the following code block for each cycle of the cpu
@@ -99,8 +107,10 @@ void loop() {
   if (cmdsEnabled) {
     processCmds();
   }
-  debug("PIR State: " + getPIRState(0));
-  debug("");
+  if (runMode > 0) {
+    debug("PIR State: " + getPIRState(0));
+    debug("");
+  }
   //delay(100);
   //determine which mode to run the system in
   if (runMode == 1) {
@@ -122,44 +132,44 @@ void loop() {
 //
 
 //toggle digital pin on or off
-void toggleDigialOutput(int pinNumber, bool *storedState) {
+void toggleDigialOutput(int *pinNumber, bool *storedState) {
   //set pin "pinNumber" state to the inverse of the on current pin state as specified by the stored state value "storedState"
   setDigitalOutput(pinNumber, !*storedState, storedState);
 }
 //set digital pin on or off
-void setDigitalOutput(int pinNumber, bool state, bool *storedState) {
+void setDigitalOutput(int *pinNumber, bool state, bool *storedState) {
   //determine weather to turn pin "pinNumber" on or off
   if (state) {
-    digitalWrite(pinNumber, HIGH); //set pin "pinNumber" to ON
+    digitalWrite(*pinNumber, HIGH); //set pin "pinNumber" to ON
   } else {
-    digitalWrite(pinNumber, LOW); //set pin "pinNumber" to OFF
+    digitalWrite(*pinNumber, LOW); //set pin "pinNumber" to OFF
   }
   //set stored state variable
   *storedState = state;
 }
 //set analog pin on or off
-void setAnalogOutput(int pinNumber, int output, int *storedOutput) {
+void setAnalogOutput(int *pinNumber, int output, int *storedOutput) {
   //set the analog output to the specified value
-  analogWrite(pinNumber, output);
+  analogWrite(*pinNumber, output);
 
   //set stored state variable
   *storedOutput = output;
 }
 //configure new digital output pin
-void configureDigitalOutputPin(int pinNumber, bool *storedState, bool defaultState) {
+void configureDigitalOutputPin(int *pinNumber, bool *storedState, bool *defaultState) {
   //set digital pin "pinNumber" as an output
-  pinMode(pinNumber, OUTPUT);
+  pinMode(*pinNumber, OUTPUT);
 
   //set new pin number to OFF state and update the pins corosponding stored state variable
   setDigitalOutput(pinNumber, defaultState, storedState);
 }
 //configure new digital input pin
-void configureDigitalInputPin(int pinNumber, bool *storedState) {
+void configureDigitalInputPin(int *pinNumber, bool *storedState) {
   //set digital pin "pinNumber" as an input
-  pinMode(pinNumber, INPUT);
+  pinMode(*pinNumber, INPUT);
 
   //read the initial input value and store it in the storedState variable
-  *storedState = digitalRead(pinNumber);
+  *storedState = digitalRead(*pinNumber);
 }
 
 //
@@ -174,7 +184,7 @@ void configurePIR(int pirNumber, int pinNumber) {
     PIRPins[pirNumber] = pinNumber;
 
     //pass PIR pin number and corosponding stored output variable to "configureDigitalInputPin"
-    configureDigitalInputPin(PIRPins[pirNumber], &pirOutput[pirNumber]);
+    configureDigitalInputPin(&PIRPins[pirNumber], &pirOutput[pirNumber]);
   }
 }
 //get specific PIR value
@@ -202,10 +212,10 @@ void configureMotor(int motorNumber, int pinNumber) {
     motorPins[motorNumber] = pinNumber;
 
     //pass motor pin number, stored state variable, and inital state to "configureDigitalOutputPin"
-    configureDigitalOutputPin(motorPins[motorNumber], &motorState[motorNumber], defaultMotorState);
+    configureDigitalOutputPin(&motorPins[motorNumber], &motorState[motorNumber], &defaultMotorState);
 
     //Set default Motor initial motor speed to zero
-    setAnalogOutput(motorPins[motorNumber], 0, &motorSpeed[motorNumber]);
+    setAnalogOutput(&motorPins[motorNumber], 0, &motorSpeed[motorNumber]);
   }
 }
 //Set default Motor on or off (speed=0 or speed=max)
@@ -213,7 +223,7 @@ void setMotorState(int motorNumber, bool state) {
   //check if specified motorNumber is valid
   if ((motorNumber >= 0) && (motorNumber < numberOfMotors)) {
     //pass specified motor pin number and stored motor state along with the new state to "setOuput" function
-    setDigitalOutput(motorPins[motorNumber], state, &motorState[motorNumber]);
+    setDigitalOutput(&motorPins[motorNumber], &state, &motorState[motorNumber]);
   }
 }
 //convert an RPM value to analog output range
@@ -234,7 +244,7 @@ void setMotorSpeed(int motorNumber, int speed) {
     //check if specified speed is valid
     if ((speed >= 0) && (speed < maxRPM[motorNumber])) {
       //pass specified motor pin number and stored motor speed along with the new state to "setOuput" function
-      setAnalogOutput(motorPins[motorNumber], rpmToAnalog(motorNumber, speed), &motorSpeed[motorNumber]);
+      setAnalogOutput(&motorPins[motorNumber], rpmToAnalog(motorNumber, speed), &motorSpeed[motorNumber]);
     }
   }
 }
@@ -243,7 +253,7 @@ void toggleMotorState(int motorNumber) {
   //check if specified motorNumber is valid
   if ((motorNumber >= 0) && (motorNumber < numberOfMotors)) {
     //pass specified motor pin number and stored motor state to "toggleOuput" function
-    toggleDigialOutput(motorPins[motorNumber], &motorState[motorNumber]);
+    toggleDigialOutput(&motorPins[motorNumber], &motorState[motorNumber]);
   }
 }
 //set a specific motor's maximum RPM
@@ -275,7 +285,7 @@ void rampMotorSpeed(int motorNumber, int targetSpeed, int increment, int delayTi
       debug("RPM: " + i);
       debug("Analog Output: " + rpmToAnalog(motorNumber, i));
       debug("");
-      setAnalogOutput(motorPins[motorNumber], rpmToAnalog(motorNumber, i), &motorSpeed[motorNumber]);
+      setAnalogOutput(&motorPins[motorNumber], rpmToAnalog(motorNumber, i), &motorSpeed[motorNumber]);
       if ((delayTime > 1) && (delayTime < maxDelay)) {
         delay(delayTime);
       }
@@ -290,7 +300,7 @@ void rampMotorSpeed(int motorNumber, int targetSpeed, int increment, int delayTi
       debug("RPM: " + i);
       debug("Analog Output: " + rpmToAnalog(motorNumber, i));
       debug("");
-      setAnalogOutput(motorPins[motorNumber], rpmToAnalog(motorNumber, i), &motorSpeed[motorNumber]);
+      setAnalogOutput(&motorPins[motorNumber], rpmToAnalog(motorNumber, i), &motorSpeed[motorNumber]);
 
       if ((delayTime > 1) && (delayTime < maxDelay)) {
         delay(delayTime);
@@ -326,18 +336,18 @@ void configureLED(int LEDNumber, int pinNumber) {
     LEDPins[LEDNumber] = pinNumber;
 
     //pass LED pin number, stored state variable, and the initial LED state to "configureDigitalOutputPin" function
-    configureDigitalOutputPin(LEDPins[LEDNumber], &LEDState[LEDNumber], defaultLEDState);
+    configureDigitalOutputPin(&LEDPins[LEDNumber], &LEDState[LEDNumber], &defaultLEDState);
   }
 }
 //set LED on or off
 void setLEDState(int LEDNumber, bool state) {
   //pass specified LED pin number and stored LED state along with the new state to "setOuput" function
-  setDigitalOutput(LEDPins[LEDNumber], state, &LEDState[LEDNumber]);
+  setDigitalOutput(&LEDPins[LEDNumber], &state, &LEDState[LEDNumber]);
 }
 //toggle LED state
 void toggleLEDState(int LEDNumber) {
   //pass specified LED pin number and stored LED state to "toggleOuput" function
-  toggleDigialOutput(LEDPins[LEDNumber], &LEDState[LEDNumber]);
+  toggleDigialOutput(&LEDPins[LEDNumber], &LEDState[LEDNumber]);
 }
 
 //
@@ -370,9 +380,17 @@ void processCmds() {
 
   //read incoming command with parameters if serial port is available(active)
   while (Serial.available()) {
+    debug("Reading command...");
+
     cmdS = Serial.readStringUntil(seperator); //read command
     valS = Serial.readStringUntil(seperator); //read first command parameter
     val2S = Serial.readStringUntil(delimiter); //read second command parameter
+
+    debug("Command: " + cmdS);
+    debug("Val: " + valS);
+    debug("Val2: " + val2S);
+    debug("Current Menu: " + String(currentMenu));
+    debug("");
   }
 
   switch (currentMenu) {
@@ -405,26 +423,31 @@ void mainMenu() {
   char cmd = cmdS.charAt(0); //convert command to an integer
   int val = valS.toInt(); //convert first command parameter to an integer
   int val2 = val2S.toInt(); //convert second command parameter to an integer
-
+  if (cmdS != "-1") {
+    debug("Command Char: " + String(cmd));
+    debug("Val int: " + String(val));
+    debug("Val2 int: " + String(val2));
+  }
   //call function that matches the command
-  if (cmd == '0') {
+  if (cmd == refreshMenuChar) {
     //call function that corosponds to command #0
-    showMenu(0); //display help menu over the serial communications
-
+    showMenu(currentMenu); //display help menu over the serial communications
   } else if (cmd == '1') {
     //call function that corosponds to command #1
-    currentMenu = 1;
-    MotorMenu();
-
+    switchMenus(1);
   } else if (cmd == '2') {
     //call function that corosponds to command #2
-    currentMenu = 2;
-    LEDMenu();
-
+    switchMenus(2);
   } else if (cmd == '3') {
-    //call function that corosponds to command #2
-    currentMenu = 3;
-    PIRMenu();
+    //call function that corosponds to command #3
+    switchMenus(3);
+  } else if (cmd == '4') {
+    //call function that corosponds to command #4
+    switchMenus(4);
+  } else {
+    if (cmdS != "-1") {
+      debug("Invalid Command");
+    }
   }
 
 }
@@ -441,7 +464,7 @@ void MotorMenu() {
 
   } else if (cmd == returnToLastMenuChar) {
     //call function that corosponds to command #1
-    currentMenu = 0;
+    switchMenus(0);
 
   } else if (cmd == '1') {
     //call function that corosponds to command #2
@@ -473,6 +496,10 @@ void MotorMenu() {
     //Set default Motor speed ramping delay (milliseconds)
     defaultRampDelay = val;
 
+  } else {
+    if (cmdS != "-1") {
+      debug("Invalid Command");
+    }
   }
 }
 
@@ -489,7 +516,7 @@ void LEDMenu() {
 
   } else if (cmd == returnToLastMenuChar) {
     //call function that corosponds to command #1
-    currentMenu = 0;
+    switchMenus(0);
 
   } else if (cmd == '1') {
     //call function that corosponds to command #2
@@ -506,6 +533,10 @@ void LEDMenu() {
     //Set an LED pin (LEDnumber, pinNumber)
     configureLED(val, val2);
 
+  } else {
+    if (cmdS != "-1") {
+      debug("Invalid Command");
+    }
   }
 }
 
@@ -522,7 +553,7 @@ void PIRMenu() {
     showMenu(3); //display help menu over the serial communications
   } else if (cmd == returnToLastMenuChar) {
     //call function that corosponds to command #1
-    currentMenu = 0;
+    switchMenus(0);
   } else if (cmd == '1') {
     //call function that corosponds to command #2
     //Print stored PIR output (PIRnumber)
@@ -535,6 +566,10 @@ void PIRMenu() {
     if ((val >= 0) && (val < numberOfPIRs)) {
       getPIRState(val);
       Serial.println("New value of PIR #" + String(val) + " = " + String(pirOutput[val]));
+    }
+  } else {
+    if (cmdS != "-1") {
+      debug("Invalid Command");
     }
   }
 }
@@ -551,26 +586,29 @@ void sysMenu() {
 
   } else if (cmd == returnToLastMenuChar) {
     //call function that corosponds to command #1
-    currentMenu = 0;
+    switchMenus(0);
 
   } else if (cmd == '1') {
     //call function that corosponds to command #2
     //Set run mode (modeID)
     runMode = val;
+    Serial.println("Run Mode = " + String(runMode));
 
   } else if (cmd == '2') {
-    //call function that corosponds to command #2
+    //call function that corosponds to command #3
     //Print available run modes
+    /*
     tableObj t(2);
     t.titles->addData("ID #");
     t.titles->addData("Name");
     t.addRow("0", "Serial Commands only");
     t.addRow("1", "Min/Max motor speed based on PIR state");
     t.addRow("2", "Ramp motor speed up or down based on PIR state");
-
+    */
   } else if (cmd == '3') {
-    //call function that corosponds to command #2
+    //call function that corosponds to command #4
     //Print current pin setting
+    /*
     tableObj t(2);
     t.titles->addData("Name");
     t.titles->addData("Pin #");
@@ -583,7 +621,30 @@ void sysMenu() {
     for (int i = 0; i < numberOfPIRs; i++) {
       t.addRow("PIR #" + String(i), String(PIRPins[i]));
     }
-
+    */
+  } else if (cmd == '4') {
+    //call function that corosponds to command #5
+    //Set console width (width)
+    if (val > 0) {
+      consoleWidth = val;
+      Serial.println("Console Width = " + String(consoleWidth));
+    }
+  } else if (cmd == '5') {
+    //call function that corosponds to command #6
+    //Set console height (height)
+    if (val > 0) {
+      consoleHeight = val;
+      Serial.println("Console Height = " + String(consoleHeight));
+    }
+  } else if (cmd == '6') {
+    //call function that corosponds to command #7
+    //toggle debug mode
+    debugEnabled = !debugEnabled;
+    if (debug) {
+      Serial.println("Debug enabled");
+    } else {
+      Serial.println("Debug disabled");
+    }
   }
 }
 
@@ -592,6 +653,11 @@ void sysMenu() {
 //User Interface Control Functions
 //
 
+//Switch between menus
+void switchMenus(int menuID) {
+  currentMenu = menuID;
+  showMenu(currentMenu);
+}
 //Print text to the serial console (used for debugging)
 void debug(String output) {
   //verify that serial communications are configured
@@ -741,6 +807,9 @@ void showMenu(int menuID) {
       Serial.println("1 = Set run mode (modeID)"); //print third command
       Serial.println("2 = Print available run modes"); //print fourth command
       Serial.println("3 = Print current pin setting"); //print fifth command
+      Serial.println("4 = Set console width (width)"); //print sixth command
+      Serial.println("5 = Set console height (height)"); //print sixth command
+      Serial.println("6 = toggle debug mode"); //print sixth command
 
       //print a line at bottom of the menu to show denote the end of the menu
       printLineBreak();
