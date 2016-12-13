@@ -8,91 +8,94 @@ Date Created: 1/12/12/2016
 */
 
 #include "Arduino.h"
-#include "String.h"
 
 //
 //Table definitions
 //
-const int maxTableCells=5;
+const int maxTableCells = 5;
 
 using namespace std;
 
-class tableRow{
+class tableRow {
   private:
     String cells[maxTableCells];
     int rowWidth;
   public:
-    tableRow(){
-      rowWidth=maxTableCells;
+    tableRow() {
+      rowWidth = maxTableCells;
     }
-    tableRow(int width){
+    tableRow(int width) {
       RowWidth(width);
-      for(int i=0;i<rowWidth;i++){
-        cells[i]="";
+      for (int i = 0; i < rowWidth; i++) {
+        cells[i] = "";
       }
     }
-    void RowWidth(int width){
-      if((width>0)&&(width<maxTableCells)){
-        rowWidth=width;
-      }else{
-        rowWidth=maxTableCells;
+    ~tableRow() {}
+    void RowWidth(int width) {
+      if ((width > 0) && (width < maxTableCells)) {
+        rowWidth = width;
+      } else {
+        rowWidth = maxTableCells;
       }
     }
-    int RowWidth(){
+    int RowWidth() {
       return rowWidth;
     }
-    void addData(String data){
-      for(int i=0;i<rowWidth;i++){
-        if(cells[i]==""){
-          cells[i]=data;
+    void addData(String data) {
+      for (int i = 0; i < rowWidth; i++) {
+        if (cells[i] == "") {
+          cells[i] = data;
         }
       }
     }
-    void addData(String data, int position){
-      if((position>0)&&(position<rowWidth)){
-        cells[position]=data;
-      }else{
-        cells[rowWidth]=data;
+    void addData(String data, int position) {
+      if ((position > 0) && (position < rowWidth)) {
+        cells[position] = data;
+      } else {
+        cells[rowWidth] = data;
       }
     }
-    void print(){
-      if(Serial){
-        for(int i=0;i<rowWidth;i++){
-          Serial.print("|\t"+cells[i]);
+    void print() {
+      if (Serial) {
+        for (int i = 0; i < rowWidth; i++) {
+          Serial.print("|\t" + String(cells[i]));
         }
-        Serial.print("|");
+        Serial.print("|\n");
       }
     }
 };
-class tableObj{
+class tableObj {
   public:
     tableRow *titles;
-    tableObj(int width){
-      titles=new tableRow(width);
+    tableObj(int width) {
+      titles = new tableRow(width);
     }
-    void addRow(String s0){
-      addRow(s0, "", "", "", "");
+    ~tableObj() {};
+    void addRow(String c0) {
+      addRow(c0, "", "", "", "");
     }
-    void addRow(String s0,String s1){
-      addRow(s0, s1, "", "", "");
+    void addRow(String c0, String c1) {
+      addRow(c0, c1, "", "", "");
     }
-    void addRow(String s0,String s1,String s2){
-      addRow(s0, s1, s2, "", "");
+    void addRow(String c0, String c1, String c2) {
+      addRow(c0, c1, c2, "", "");
     }
-    void addRow(String s0,String s1,String s2,String s3){
-      addRow(s0, s1, s2, s3, "");
+    void addRow(String c0, String c1, String c2, String c3) {
+      addRow(c0, c1, c2, c3, "");
     }
-    void addRow(String s0,String s1,String s2,String s3,String s4){
-      String tmp[]={s0,s1,s2,s3,s4};
+    void addRow(String c0, String c1, String c2, String c3, String c4) {
+      String tmp[] = {c0, c1, c2, c3, c4};
       tableRow row;
-      for(int i=0;i<maxTableCells;i++){
-        if(tmp[i]!=""){
+      for (int i = 0; i < maxTableCells; i++) {
+        if (tmp[i] != "") {
           row.addData(tmp[i]);
         }
       }
       addRow(&row);
+      delete tmp;
+      delete &row;
     }
-    void addRow(tableRow *row){
+    void addRow(tableRow *row) {
       row->RowWidth(titles->RowWidth());
       row->print();
     }
