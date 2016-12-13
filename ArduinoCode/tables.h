@@ -8,62 +8,67 @@ Date Created: 1/12/12/2016
 */
 
 #include "Arduino.h"
+#include "String.h"
 
 //
 //Table definitions
 //
 const int maxTableCells=5;
 
+using namespace std;
+
 class tableRow{
-  private String cells[maxTableCells];
-  private int rowWidth;
-  tableRow(){
-    rowWidth=maxTableCells;
-  }
-  tableRow(int width){
-    RowWidth(width);
-    for(int i=0;i<rowWidth;i++){
-      cells[i]="";
-    }
-  }
-  void RowWidth(int width){
-    if((width>0)&&(width<maxTableCells)){
-      rowWidth=width;
-    }else{
+  private:
+    String cells[maxTableCells];
+    int rowWidth;
+  public:
+    tableRow(){
       rowWidth=maxTableCells;
     }
-  }
-  int RowWidth(){
-    return rowWidth;
-  }
-  void addData(String data){
-    for(int i=0;i<rowWidth;i++){
-      if(cells[i]==""){
-        cells[i]=data;
-      }
-    }
-  }
-  void addData(String data, int position){
-    if((position>0)&&(position<rowWidth)){
-      cells[position]=data;
-    }else{
-      cells[rowWidth]=data;
-    }
-  }
-  void print(){
-    if(Serial){
+    tableRow(int width){
+      RowWidth(width);
       for(int i=0;i<rowWidth;i++){
-        Serial.print("|\t"+cells[i]);
+        cells[i]="";
       }
-      Serial.print("|");
     }
-  }
+    void RowWidth(int width){
+      if((width>0)&&(width<maxTableCells)){
+        rowWidth=width;
+      }else{
+        rowWidth=maxTableCells;
+      }
+    }
+    int RowWidth(){
+      return rowWidth;
+    }
+    void addData(String data){
+      for(int i=0;i<rowWidth;i++){
+        if(cells[i]==""){
+          cells[i]=data;
+        }
+      }
+    }
+    void addData(String data, int position){
+      if((position>0)&&(position<rowWidth)){
+        cells[position]=data;
+      }else{
+        cells[rowWidth]=data;
+      }
+    }
+    void print(){
+      if(Serial){
+        for(int i=0;i<rowWidth;i++){
+          Serial.print("|\t"+cells[i]);
+        }
+        Serial.print("|");
+      }
+    }
 };
-class table{
+class tableObj{
   public:
-    tableRow titles;
-    table(int width){
-      titles=New tableRow(width);
+    tableRow *titles;
+    tableObj(int width){
+      titles=new tableRow(width);
     }
     void addRow(String s0){
       addRow(s0, "", "", "", "");
@@ -88,7 +93,7 @@ class table{
       addRow(&row);
     }
     void addRow(tableRow *row){
-      *row.RowWidth(titles.RowWidth());
-      *row.print();
+      row->RowWidth(titles->RowWidth());
+      row->print();
     }
 };
