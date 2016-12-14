@@ -1,6 +1,6 @@
 /*
 <<<File Info>>>
-Description: Starter code for a project
+Description: Open Source code suite for Nuit Blanche style projects
 
 Developer: Jonathan Brunath
 
@@ -11,7 +11,7 @@ Updated: 2/13/12/2016
 */
 
 #include "Arduino.h"
-#include "tables.h"
+//#include "tables.h"
 
 //
 //Variable Definitions
@@ -33,11 +33,10 @@ int PIRPins[numberOfLEDs]; //array to store PIR I/O pin numbers
 
 //defaults
 int defaultMotorMaxRPM = 150; //defines the default maximum RPM of the motors
-int defaultLEDPins[] = {10}; //defines the default LED pin numbers (number of pins can differ from value of "numberOfLEDs", extras will be ignored during configuration)
-int defaultMotorSpeedPins[] = {3,5,6}; //defines the default Motor Speed pin numbers (number of pins can differ from value of "numberOfMotors", extras will be ignored during configuration)
-int defaultMotorForwardPins[] = {2,7,12}; //defines the default Motor Forward pin numbers (number of pins can differ from value of "numberOfMotors", extras will be ignored during configuration)
-int defaultMotorReversePins[] = {4,8,13}; //defines the default Motor Reverse pin numbers (number of pins can differ from value of "numberOfMotors", extras will be ignored during configuration)
-int defaultPIRPins[] = {9}; //defines the default PIR pin numbers (number of pins can differ from value of "numberOfPIRs", extras will be ignored during configuration)
+int defaultLEDPins[] = {2}; //defines the default LED pin numbers (number of pins can differ from value of "numberOfLEDs", extras will be ignored during configuration)
+int defaultMotorForwardPins[] = {3,6,10}; //defines the default Motor Forward pin numbers (number of pins can differ from value of "numberOfMotors", extras will be ignored during configuration)
+int defaultMotorReversePins[] = {5,9,11}; //defines the default Motor Reverse pin numbers (number of pins can differ from value of "numberOfMotors", extras will be ignored during configuration)
+int defaultPIRPins[] = {4}; //defines the default PIR pin numbers (number of pins can differ from value of "numberOfPIRs", extras will be ignored during configuration)
 int defaultUpperTargetMotorSpeed = defaultMotorMaxRPM; //defines the default upper target speed of the motors
 int defaultLowerTargetMotorSpeed = 0; //defines the default lower target speed of the motors
 int defaultRampDuration = 500; //defines the default ramping duration in milliseconds for ramping the speed of a motor
@@ -52,21 +51,18 @@ bool pirOutput[numberOfPIRs]; //array to store the output of each PIR sensor
 //motor object
 class motorObj{
   private:
-    bool motorPolarity[2]; //integer to store polarity of the motor (direction of spin)
-
+    bool motorActive;
+    bool motorPolarity[2]; //boolean to store polarity states of the motor (direction of spin)
   public:
-    int motorSpeedPin; //integer to store motor speed I/O pin number
     int motorPolarityPins[2]; //integer to store motor polarity I/O pin numbers
-    bool motorState; //boolean to store current state of the motor
     int motorSpeed; //integer to store the speed of the motor
     int rampDuration; //stores the ramping increment value for the motor;
     int maxRPM; //stores the maximum safe RPM of the motor
 
     motorObj(){
-      motorSpeedPin=3;
-      motorPolarityPins[0]=2;
-      motorPolarityPins[1]=4;
-      motorState=false;
+      motorPolarityPins[0]=3;
+      motorPolarityPins[1]=5;
+      motorActive=false;
       motorPolarity[0]=false;
       motorPolarity[1]=false;
       motorSpeed=0;
@@ -74,13 +70,39 @@ class motorObj{
       maxRPM=150;
     }
 
-    bool MotorForward(){
-      return motorPolarity[0];
+    //boolean to store current state of the motor
+    bool *getMotorPolarity(int polarity){
+      if((polarity==0)||(polarity==1)){
+        return &motorPolarity[polarity];
+      } else {
+        return &motorActive;
+      }
     }
-    bool MotorReverse(){
-      return motorPolarity[1];
+    int getMotorPolarity(){
+      if(motorPolarity[0]){
+        return 1;
+      } else if(motorPolarity[1]){
+        return -1;
+      } else {
+        return 0;
+      }
     }
-    void MotorPolarity(int polarity){
+    //boolean to store current state of the motor
+    bool *motorState(){
+      motorActive=((motorPolarity[0])^(motorPolarity[1]));
+      return &motorActive;
+    }
+    //return the pin number of the currently selected direction of spin
+    int *motorSpeedPin(){
+      if(motorPolarity[0]){
+        return &motorPolarityPins[0];
+      }else if (motorPolarity[1]){
+        return &motorPolarityPins[1];
+      } else {
+        return &motorPolarityPins[0];
+      }
+    }
+    void setMotorPolarity(int polarity){
       if(polarity>0){
         motorPolarity[0]=true;
         motorPolarity[1]=false;
@@ -93,13 +115,13 @@ class motorObj{
       }
     }
 };
-
 motorObj motors[numberOfMotors];
 
 //command processing variables
 String cmdS; //String to store incoming command
 String valS; //String to store first command parameter
 String val2S; //String to store first command parameter
+String val3S; //String to store first command parameter
 char seperator = ','; //character to use to differentiate between the command and parameters in an incoming serial String (command)
 char delimiter = '\n'; //character to use to signify the end of an incoming serial String (command)
 bool cmdsEnabled = true; //boolean to store weather commands are enabled and will be processed or not
@@ -114,86 +136,21 @@ int currentMenu = 0; //denotes which menu is currently selected
 char refreshMenuChar = 'r';
 char returnToLastMenuChar = 'b';
 
-//
-//Core System Functions
-//
-
-//initialize system settings and start basic processes
-void setup() {
-  serialControl(); //enable serial port if commands are enabled
-
-  initializeMotors();
-  initializeLEDs();
-  initializePIRs();
-
-  //if commands are enabled show the main menu on startup
-  if (cmdsEnabled) {
-    showMenu(0);
-  }
-}
-
-//repeat the following code block for each cycle of the cpu
-void loop() {
-  //process incoming commands from serial port if enabled
-  if (cmdsEnabled) {
-    processCmds();
-  }
-
-  if (runMode > 0) {
-    //debug("PIR State: " + getPIRState(0));
-    //debug("");
-    //delay(100);
-  }
-
-  //determine which mode to run the system in
-  if (runMode == 1) {
-    //run system using basic on/off control for the motors
-    for (int i = 0; i < numberOfMotors; i++) {
-      setMotorState(i, pirOutput[0]); //set the motor state to the output of the PIR sensor
-    }
-  } else if (runMode == 2) {
-    //run system using ramp up/down speeds for motors
-    //check if the PIR output has changed since the last time it was checked
-    if (pirOutput[0]) {
-      rampMotorSpeedUp(0); //ramp the motor speed
-    } else {
-      rampMotorSpeedDown(0); //ramp the motor speed
+//Print text to the serial console (used for debugging)
+void debug(String output) {
+  //verify that serial communications are configured
+  if (Serial) {
+    //Write text to serial console if debuging is enabled and serial communications are configured
+    if ((debugEnabled) && (Serial)) {
+      Serial.println(output);
     }
   }
 }
 
-void initializeMotors(){
-  //configure motors
-  //update motorObj array with default pin values
-  for (int i = 0; i < numberOfMotors; i++) {
-    configureMotor(i, defaultMotorSpeedPins[i], defaultMotorForwardPins[i], defaultMotorReversePins[i],0);
-  }
-}
-void initializeLEDs(){
-  //configure LED's
-  //update LEDPins array with default pin values and set new pins numbers as outputs
-  for (int i = 0; i < numberOfLEDs; i++) {
-    configureLED(i, defaultLEDPins[i]);
-  }
-}
-void initializePIRs(){
-  //configure PIR's
-  //update PIRPins array with default pin values and set new pins numbers as inputs
-  for (int i = 0; i < numberOfPIRs; i++) {
-
-    //debug("Default PIR Pin: " + defaultPIRPins[i]);
-    configurePIR(i, defaultPIRPins[i]);
-  }
-}
 //
 //I/O Control Functions
 //
 
-//toggle digital pin on or off
-void toggleDigialOutput(int *pinNumber, bool *storedState) {
-  //set pin "pinNumber" state to the inverse of the on current pin state as specified by the stored state value "storedState"
-  setDigitalOutput(pinNumber, !*storedState, storedState);
-}
 //set digital pin on or off
 void setDigitalOutput(int *pinNumber, bool state, bool *storedState) {
   //determine weather to turn pin "pinNumber" on or off
@@ -204,6 +161,11 @@ void setDigitalOutput(int *pinNumber, bool state, bool *storedState) {
   }
   //set stored state variable
   *storedState = state;
+}
+//toggle digital pin on or off
+void toggleDigialOutput(int *pinNumber, bool *storedState) {
+  //set pin "pinNumber" state to the inverse of the on current pin state as specified by the stored state value "storedState"
+  setDigitalOutput(pinNumber, !*storedState, storedState);
 }
 //set analog pin on or off
 void setAnalogOutput(int *pinNumber, int output, int *storedOutput) {
@@ -263,22 +225,18 @@ bool getPIRState(int pirNumber) {
 //
 
 //Configure specific motor pin
-void configureMotor(int motorNumber, int speedPinNumber, int forwardPinNumber, int reversePinNumber, int polarity = defaultMotorPolarity) {
+void configureMotor(int motorNumber, int forwardPinNumber, int reversePinNumber, int polarity = defaultMotorPolarity) {
   //check if specified pirNumber is valid
   if ((motorNumber >= 0) && (motorNumber < numberOfMotors)) {
     //set "motorPins" array index "motorNumber" to equal "pinNumber"
-    motors[motorNumber].motorSpeedPin = speedPinNumber;
     motors[motorNumber].motorPolarityPins[0] = forwardPinNumber;
     motors[motorNumber].motorPolarityPins[1] = reversePinNumber;
 
     //pass motor pin number, stored state variable, and inital state to "configureDigitalOutputPin"
-    configureDigitalOutputPin(&motors[motorNumber].motorSpeedPin, &motors[motorNumber].motorState, &defaultMotorState);
-    configureDigitalOutputPin(&motors[motorNumber].motorPolarityPins[0], &motors[motorNumber].motorState, &defaultMotorState);
-    configureDigitalOutputPin(&motors[motorNumber].motorPolarityPins[1], &motors[motorNumber].motorState, &defaultMotorState);
+    configureDigitalOutputPin(&motors[motorNumber].motorPolarityPins[0], motors[motorNumber].getMotorPolarity(0), &defaultMotorState);
+    configureDigitalOutputPin(&motors[motorNumber].motorPolarityPins[1], motors[motorNumber].getMotorPolarity(1), &defaultMotorState);
     //Set default Motor initial motor speed to zero
-    setAnalogOutput(&motora[motorNumber].motorSpeedPin, 0, &motorSpeed[motorNumber]);
-
-    //set motor polatirity
+    setAnalogOutput(motors[motorNumber].motorSpeedPin(), 0, &motors[motorNumber].motorSpeed);
   }
 }
 //Set default Motor on or off (speed=0 or speed=max)
@@ -286,7 +244,7 @@ void setMotorState(int motorNumber, bool state) {
   //check if specified motorNumber is valid
   if ((motorNumber >= 0) && (motorNumber < numberOfMotors)) {
     //pass specified motor pin number and stored motor state along with the new state to "setOuput" function
-    setDigitalOutput(&motorPins[motorNumber], &state, &motorState[motorNumber]);
+    setDigitalOutput(motors[motorNumber].motorSpeedPin(), state, motors[motorNumber].motorState());
   }
 }
 //convert an RPM value to analog output range
@@ -294,7 +252,7 @@ int rpmToAnalog(int motorNumber, int rpm) {
   //check if specified motorNumber is valid
   if ((motorNumber >= 0) && (motorNumber < numberOfMotors)) {
     //map the RPM range of the specified motor to the range of the analog output
-    return map(rpm, 0, maxRPM[motorNumber], 0, 255);
+    return map(rpm, 0, motors[motorNumber].maxRPM, 0, 255);
   }
 
   //return a value of -1 to signify that the specified motor number was invalid
@@ -305,9 +263,9 @@ void setMotorSpeed(int motorNumber, int speed) {
   //check if specified motorNumber is valid
   if ((motorNumber >= 0) && (motorNumber < numberOfMotors)) {
     //check if specified speed is valid
-    if ((speed >= 0) && (speed < motors[motorNumber].maxRPM)) {
+    if ((speed >= 0) && (speed <= motors[motorNumber].maxRPM)) {
       //pass specified motor pin number and stored motor speed along with the new state to "setOuput" function
-      setAnalogOutput(&motors[motorNumber].motorSpeed, rpmToAnalog(motorNumber, speed), &motorSpeed[motorNumber]);
+      setAnalogOutput(motors[motorNumber].motorSpeedPin(), rpmToAnalog(motorNumber, speed), &motors[motorNumber].motorSpeed);
     }
   }
 }
@@ -316,14 +274,14 @@ void toggleMotorState(int motorNumber) {
   //check if specified motorNumber is valid
   if ((motorNumber >= 0) && (motorNumber < numberOfMotors)) {
     //pass specified motor pin number and stored motor state to "toggleOuput" function
-    toggleDigialOutput(&motorPins[motorNumber], &motorState[motorNumber]);
+    toggleDigialOutput(motors[motorNumber].motorSpeedPin(), motors[motorNumber].motorState());
   }
 }
 //set a specific motor's maximum RPM
 void setMaxRPM(int motorNumber, int max) {
   //check if specified motorNumber is valid
   if ((motorNumber >= 0) && (motorNumber < numberOfMotors)) {
-    maxRPM[motorNumber] = max;
+    motors[motorNumber].maxRPM = max;
   }
 }
 //change a motors speed gradually over time
@@ -331,42 +289,39 @@ void rampMotorSpeed(int motorNumber, int targetSpeed, int duration) {
   //check if specified motorNumber is valid
   if ((motorNumber >= 0) && (motorNumber < numberOfMotors)) {
     //calculate increment value from duration and max RPM of specified motor
-    int increment = maxRPM[motorNumber]/duration;
+    int increment = motors[motorNumber].maxRPM/duration;
 
     debug("");
-    debug("Current Speed: " + String(motorSpeed[motorNumber]));
+    debug("Current Speed: " + String(motors[motorNumber].motorSpeed));
     debug("Target Speed: " + String(targetSpeed));
-    debug("Duration: " + String(Duration));
+    debug("Duration: " + String(duration));
     debug("Increment: " + String(increment));
 
     //determine weather the speed needs to ramp up or down
-    if (motorSpeed[motorNumber] < targetSpeed) {
+    if (motors[motorNumber].motorSpeed < targetSpeed) {
       //debug("");
       //debug("ramp up");
       //debug("");
       //delay(1000);
 
       //start at initial motor speed, incrementing up by the specified value until the targetSpeed is reached
-      for (int i = motorSpeed[motorNumber]; i <= targetSpeed; i += increment) {
+      for (int i = motors[motorNumber].motorSpeed; i <= targetSpeed; i += increment) {
         debug("RPM: " + String(i));
         debug("Analog Output: " + String(rpmToAnalog(motorNumber, i)));
         debug("");
-        setAnalogOutput(&motorPins[motorNumber], rpmToAnalog(motorNumber, i), &motorSpeed[motorNumber]);
-        if ((delayTime > 1) && (delayTime < maxDelay)) {
-          delay(delayTime);
-        }
+        setAnalogOutput(motors[motorNumber].motorSpeedPin(), rpmToAnalog(motorNumber, i), &motors[motorNumber].motorSpeed);
       }
-    } else if (motorSpeed[motorNumber] > targetSpeed) {
+    } else if (motors[motorNumber].motorSpeed > targetSpeed) {
       //debug("");
       //debug("ramp down");
       //debug("");
       //delay(1000);
       //start at initial motor speed, incrementing down by the specified value until the targetSpeed is reached
-      for (int i = motorSpeed[motorNumber]; i >= targetSpeed; i -= increment) {
+      for (int i = motors[motorNumber].motorSpeed; i >= targetSpeed; i -= increment) {
         debug("RPM: " + String(i));
         debug("Analog Output: " + String(rpmToAnalog(motorNumber, i)));
         debug("");
-        setAnalogOutput(&motorPins[motorNumber], rpmToAnalog(motorNumber, i), &motorSpeed[motorNumber]);
+        setAnalogOutput(motors[motorNumber].motorSpeedPin(), rpmToAnalog(motorNumber, i), &motors[motorNumber].motorSpeed);
 
         /*
         if ((delayTime > 1) && (delayTime < maxDelay)) {
@@ -376,7 +331,7 @@ void rampMotorSpeed(int motorNumber, int targetSpeed, int duration) {
       }
     }
   }
-  motorSpeed[motorNumber] = targetSpeed;
+  motors[motorNumber].motorSpeed = targetSpeed;
 }
 
 //call rampMotorSpeed function using the default increment and delay values
@@ -410,7 +365,7 @@ void configureLED(int LEDNumber, int pinNumber) {
 //set LED on or off
 void setLEDState(int LEDNumber, bool state) {
   //pass specified LED pin number and stored LED state along with the new state to "setOuput" function
-  setDigitalOutput(&LEDPins[LEDNumber], &state, &LEDState[LEDNumber]);
+  setDigitalOutput(&LEDPins[LEDNumber], state, &LEDState[LEDNumber]);
 }
 //toggle LED state
 void toggleLEDState(int LEDNumber) {
@@ -436,312 +391,9 @@ void serialControl() {
 }
 
 //
-//Command Processing
-//
-
-//process commands from the serial port
-void processCmds() {
-  /*
-  NOTICE: the way commands are current parsed can be made much more efficent. The
-  code will be updated if the need arises and time allows for it.
-  */
-
-  //read incoming command with parameters if serial port is available(active)
-  while (Serial.available()) {
-    //debug("Reading command...");
-
-    cmdS = Serial.readStringUntil(seperator); //read command
-    valS = Serial.readStringUntil(seperator); //read first command parameter
-    val2S = Serial.readStringUntil(delimiter); //read second command parameter
-
-    //debug("Command: " + cmdS);
-    //debug("Val: " + valS);
-    //debug("Val2: " + val2S);
-    //debug("Current Menu: " + String(currentMenu));
-    //debug("");
-  }
-
-  switch (currentMenu) {
-    case 0:
-      mainMenu();
-      break;
-    case 1:
-      MotorMenu();
-      break;
-    case 2:
-      LEDMenu();
-      break;
-    case 3:
-      PIRMenu();
-      break;
-    case 4:
-      sysMenu();
-      break;
-    default:
-      //code placed here will run each time the loop function is called (every cpu cycle)
-      break;
-  }
-
-  //reset command and parameters for next cycle
-  cmdS = "-1";
-  valS = "-1";
-  val2S = "-1";
-}
-void mainMenu() {
-  char cmd = cmdS.charAt(0); //convert command to an integer
-  int val = valS.toInt(); //convert first command parameter to an integer
-  int val2 = val2S.toInt(); //convert second command parameter to an integer
-  if (cmdS != "-1") {
-    //debug("Command Char: " + String(cmd));
-    //debug("Val int: " + String(val));
-    //debug("Val2 int: " + String(val2));
-  }
-  //call function that matches the command
-  if (cmd == refreshMenuChar) {
-    //call function that corosponds to command #0
-    showMenu(currentMenu); //display help menu over the serial communications
-  } else if (cmd == '1') {
-    //call function that corosponds to command #1
-    switchMenus(1);
-  } else if (cmd == '2') {
-    //call function that corosponds to command #2
-    switchMenus(2);
-  } else if (cmd == '3') {
-    //call function that corosponds to command #3
-    switchMenus(3);
-  } else if (cmd == '4') {
-    //call function that corosponds to command #4
-    switchMenus(4);
-  } else {
-    if (cmdS != "-1") {
-      //debug("Invalid Command");
-    }
-  }
-
-}
-//Process commands for Motor menu
-void MotorMenu() {
-  char cmd = cmdS.charAt(0); //convert command to a char
-  int val = valS.toInt(); //convert first command parameter to an integer
-  int val2 = val2S.toInt(); //convert second command parameter to an integer
-
-  //call function that matches the command
-  if (cmd == refreshMenuChar) {
-    //call function that corosponds to command #0
-    showMenu(1); //display help menu over the serial communications
-
-  } else if (cmd == returnToLastMenuChar) {
-    //call function that corosponds to command #1
-    switchMenus(0);
-
-  } else if (cmd == '1') {
-    //call function that corosponds to command #2
-    //Set a Motor pin (MotorNumber, pinNumber)
-    configureMotor(val, val2);
-    Serial.println("Motor #" + String(val) + " pin = " + String(val2));
-  } else if (cmd == '2') {
-    //call function that corosponds to command #3
-    //Toggle a Motor state (MotorNumber)
-    toggleMotorState(!!val);
-    Serial.println("Motor #" + String(val) + " = " + String(val2));
-  } else if (cmd == '3') {
-    //call function that corosponds to command #4
-    //Set speed of a Motor (MotorNumber,Speed)
-    setMotorSpeed(val, val2);
-    Serial.println("Motor #" + String(val) + " = " + String(val2));
-  } else if (cmd == '4') {
-    //call function that corosponds to command #5
-    //Gradually change a Motors speed (MotorNumber,Speed)
-    rampMotorSpeed(val, val2);
-    Serial.println("Motor #" + String(val) + " = " + String(val2));
-  } else if (cmd == '5') {
-    //call function that corosponds to command #5
-    //Set default Motor speed ramping increment (RPMincrement)
-    defaultRampDuration = val;
-
-  } else if (cmd == '6') {
-    //call function that corosponds to command #5
-    //Set default Motor speed ramping delay (milliseconds)
-    defaultRampDelay = val;
-
-  } else {
-    if (cmdS != "-1") {
-      //debug("Invalid Command");
-    }
-  }
-}
-
-//Process commands for LED menu
-void LEDMenu() {
-  char cmd = cmdS.charAt(0); //convert command to an integer
-  int val = valS.toInt(); //convert first command parameter to an integer
-  int val2 = val2S.toInt(); //convert second command parameter to an integer
-
-  //call function that matches the command
-  if (cmd == refreshMenuChar) {
-    //call function that corosponds to command #0
-    showMenu(2); //display help menu over the serial communications
-
-  } else if (cmd == returnToLastMenuChar) {
-    //call function that corosponds to command #1
-    switchMenus(0);
-
-  } else if (cmd == '1') {
-    //call function that corosponds to command #2
-    //Toggle an LED state (LEDnumber)
-    toggleLEDState(val);
-    Serial.println("LED #" + String(val) + " state = " + String(LEDState[val]));
-  } else if (cmd == '2') {
-    //call function that corosponds to command #2
-    //Set state of an LED (LEDnumber,0:1)
-    setLEDState(val, !!val2);
-    Serial.println("LED #" + String(val) + " state = " + String(val2));
-
-  } else if (cmd == '3') {
-    //call function that corosponds to command #2
-    //Set an LED pin (LEDnumber, pinNumber)
-    configureLED(val, val2);
-    Serial.println("LED #" + String(val) + " pin = " + String(val2));
-
-  } else {
-    if (cmdS != "-1") {
-      //debug("Invalid Command");
-    }
-  }
-}
-
-//Process commands for PIR menu
-void PIRMenu() {
-  char cmd = cmdS.charAt(0); //convert command to an integer
-  int val = valS.toInt(); //convert first command parameter to an integer
-  int val2 = val2S.toInt(); //convert second command parameter to an integer
-
-  //call function that matches the command
-
-  if (cmd == refreshMenuChar) {
-    //call function that corosponds to command #0
-    showMenu(3); //display help menu over the serial communications
-  } else if (cmd == returnToLastMenuChar) {
-    //call function that corosponds to command #1
-    switchMenus(0);
-  } else if (cmd == '1') {
-    //call function that corosponds to command #2
-    //Print stored PIR output (PIRnumber)
-    if ((val >= 0) && (val < numberOfPIRs)) {
-      Serial.println("PIR #" + String(val) + " = " + String(pirOutput[val]));
-    }
-  } else if (cmd == '2') {
-    //call function that corosponds to command #2
-    //Update PIR state (PIRnumber)
-    if ((val >= 0) && (val < numberOfPIRs)) {
-      getPIRState(val);
-      Serial.println("New value of PIR #" + String(val) + " = " + String(pirOutput[val]));
-    }
-  } else {
-    if (cmdS != "-1") {
-      //debug("Invalid Command");
-    }
-  }
-}
-//Process commands for System menu
-void sysMenu() {
-  char cmd = cmdS.charAt(0); //convert command to an integer
-  int val = valS.toInt(); //convert first command parameter to an integer
-  int val2 = val2S.toInt(); //convert second command parameter to an integer
-
-  //call function that matches the command
-  if (cmd == refreshMenuChar) {
-    //call function that corosponds to command #0
-    showMenu(4); //display help menu over the serial communications
-
-  } else if (cmd == returnToLastMenuChar) {
-    //call function that corosponds to command #1
-    switchMenus(0);
-
-  } else if (cmd == '1') {
-    //call function that corosponds to command #2
-    //Set run mode (modeID)
-    runMode = val;
-    Serial.println("Run Mode = " + String(runMode));
-
-  } else if (cmd == '2') {
-    //call function that corosponds to command #3
-    //Print available run modes
-
-    /*
-    tableObj t(2);
-    t.titles->addData("ID #");
-    t.titles->addData("Name");
-    t.addRow("0", "Serial Commands only");
-    t.addRow("1", "Min/Max motor speed based on PIR state");
-    t.addRow("2", "Ramp motor speed up or down based on PIR state");
-    delete &t;
-    */
-  } else if (cmd == '3') {
-    //call function that corosponds to command #4
-    //Print current pin setting
-
-    tableObj t(2);
-    t.titles->addData("Name");
-    t.titles->addData("Pin #");
-    t.titles->print();
-    for (int i = 0; i < numberOfMotors; i++) {
-      t.addRow("Motor #" + String(i), String(motorPins[i]));
-    }
-    for (int i = 0; i < numberOfLEDs; i++) {
-      t.addRow("LED #" + String(i), String(LEDPins[i]));
-    }
-    for (int i = 0; i < numberOfPIRs; i++) {
-      t.addRow("PIR #" + String(i), String(PIRPins[i]));
-    }
-    delete &t;
-
-  } else if (cmd == '4') {
-    //call function that corosponds to command #5
-    //Set console width (width)
-    if (val > 0) {
-      consoleWidth = val;
-      Serial.println("Console Width = " + String(consoleWidth));
-    }
-  } else if (cmd == '5') {
-    //call function that corosponds to command #6
-    //Set console height (height)
-    if (val > 0) {
-      consoleHeight = val;
-      Serial.println("Console Height = " + String(consoleHeight));
-    }
-  } else if (cmd == '6') {
-    //call function that corosponds to command #7
-    //toggle debug mode
-    debugEnabled = !debugEnabled;
-    if (debugEnabled) {
-      Serial.println("Debug enabled");
-    } else {
-      Serial.println("Debug disabled");
-    }
-  }
-}
-
-
-//
 //User Interface Control Functions
 //
 
-//Switch between menus
-void switchMenus(int menuID) {
-  currentMenu = menuID;
-  showMenu(currentMenu);
-}
-//Print text to the serial console (used for debugging)
-void debug(String output) {
-  //verify that serial communications are configured
-  if (Serial) {
-    //Write text to serial console if debuging is enabled and serial communications are configured
-    if ((debugEnabled) && (Serial)) {
-      Serial.println(output);
-    }
-  }
-}
 //print a line of characters to denote seperate sections of a texted based menu over serial communications
 void printLineBreak(char character, int width) {
   //verify that serial communications are configured
@@ -890,5 +542,333 @@ void showMenu(int menuID) {
       break;
     default:
       break;
+  }
+}
+//Switch between menus
+void switchMenus(int menuID) {
+  currentMenu = menuID;
+  showMenu(currentMenu);
+}
+
+//
+//Command Processing
+//
+
+void mainMenu() {
+  char cmd = cmdS.charAt(0); //convert command to an integer
+  //int val = valS.toInt(); //convert first command parameter to an integer
+  //int val2 = val2S.toInt(); //convert second command parameter to an integer
+  if (cmdS != "-1") {
+    //debug("Command Char: " + String(cmd));
+    //debug("Val int: " + String(val));
+    //debug("Val2 int: " + String(val2));
+  }
+  //call function that matches the command
+  if (cmd == refreshMenuChar) {
+    //call function that corosponds to command #0
+    showMenu(currentMenu); //display help menu over the serial communications
+  } else if (cmd == '1') {
+    //call function that corosponds to command #1
+    switchMenus(1);
+  } else if (cmd == '2') {
+    //call function that corosponds to command #2
+    switchMenus(2);
+  } else if (cmd == '3') {
+    //call function that corosponds to command #3
+    switchMenus(3);
+  } else if (cmd == '4') {
+    //call function that corosponds to command #4
+    switchMenus(4);
+  } else {
+    if (cmdS != "-1") {
+      //debug("Invalid Command");
+    }
+  }
+}
+//Process commands for Motor menu
+void MotorMenu() {
+  char cmd = cmdS.charAt(0); //convert command to a char
+  int val = valS.toInt(); //convert first command parameter to an integer
+  int val2 = val2S.toInt(); //convert second command parameter to an integer
+  int val3 = val3S.toInt(); //convert third command parameter to an integer
+
+  //call function that matches the command
+  if (cmd == refreshMenuChar) {
+    //call function that corosponds to command #0
+    showMenu(1); //display help menu over the serial communications
+
+  } else if (cmd == returnToLastMenuChar) {
+    //call function that corosponds to command #1
+    switchMenus(0);
+
+  } else if (cmd == '1') {
+    //call function that corosponds to command #2
+    //Set a Motor pin (MotorNumber, pinNumber)
+    configureMotor(val, val2, val3);
+    Serial.println("Motor #" + String(val) + " pin = " + String(val2));
+  } else if (cmd == '2') {
+    //call function that corosponds to command #3
+    //Toggle a Motor state (MotorNumber)
+    toggleMotorState(!!val);
+    Serial.println("Motor #" + String(val) + " = " + String(!!val2));
+  } else if (cmd == '3') {
+    //call function that corosponds to command #4
+    //Set speed of a Motor (MotorNumber,Speed)
+    setMotorSpeed(val, val2);
+    Serial.println("Motor #" + String(val) + "Direction = " + String(motors[val].getMotorPolarity()));
+    Serial.println("Motor #" + String(val) + "Speed = " + String(val2));
+  } else if (cmd == '4') {
+    //call function that corosponds to command #5
+    //Gradually change a Motors speed (MotorNumber,Speed)
+    rampMotorSpeed(val, val2);
+    Serial.println("Motor #" + String(val) + " = " + String(val2));
+  } else if (cmd == '5') {
+    //call function that corosponds to command #5
+    //Set default Motor speed ramping increment (RPMincrement)
+    defaultRampDuration = val;
+    Serial.println("Default Motor Ramp Duration = " + String(defaultRampDuration));
+  } else if (cmd == '6') {
+    //call function that corosponds to command #5
+    //Set Motor direction ramping delay (milliseconds)
+    if((val>=0)&&(val<numberOfMotors)){
+      motors[val].setMotorPolarity(val2);
+
+    }
+  } else {
+    if (cmdS != "-1") {
+      //debug("Invalid Command");
+    }
+  }
+}
+
+//Process commands for LED menu
+void LEDMenu() {
+  char cmd = cmdS.charAt(0); //convert command to an integer
+  int val = valS.toInt(); //convert first command parameter to an integer
+  int val2 = val2S.toInt(); //convert second command parameter to an integer
+
+  //call function that matches the command
+  if (cmd == refreshMenuChar) {
+    //call function that corosponds to command #0
+    showMenu(2); //display help menu over the serial communications
+
+  } else if (cmd == returnToLastMenuChar) {
+    //call function that corosponds to command #1
+    switchMenus(0);
+
+  } else if (cmd == '1') {
+    //call function that corosponds to command #2
+    //Toggle an LED state (LEDnumber)
+    toggleLEDState(val);
+    Serial.println("LED #" + String(val) + " state = " + String(LEDState[val]));
+  } else if (cmd == '2') {
+    //call function that corosponds to command #2
+    //Set state of an LED (LEDnumber,0:1)
+    setLEDState(val, !!val2);
+    Serial.println("LED #" + String(val) + " state = " + String(val2));
+
+  } else if (cmd == '3') {
+    //call function that corosponds to command #2
+    //Set an LED pin (LEDnumber, pinNumber)
+    configureLED(val, val2);
+    Serial.println("LED #" + String(val) + " pin = " + String(val2));
+
+  } else {
+    if (cmdS != "-1") {
+      //debug("Invalid Command");
+    }
+  }
+}
+
+//Process commands for PIR menu
+void PIRMenu() {
+  char cmd = cmdS.charAt(0); //convert command to an integer
+  int val = valS.toInt(); //convert first command parameter to an integer
+  //int val2 = val2S.toInt(); //convert second command parameter to an integer
+  //int val3 = val3S.toInt(); //convert second command parameter to an integer
+
+  //call function that matches the command
+
+  if (cmd == refreshMenuChar) {
+    //call function that corosponds to command #0
+    showMenu(3); //display help menu over the serial communications
+  } else if (cmd == returnToLastMenuChar) {
+    //call function that corosponds to command #1
+    switchMenus(0);
+  } else if (cmd == '1') {
+    //call function that corosponds to command #2
+    //Print stored PIR output (PIRnumber)
+    if ((val >= 0) && (val < numberOfPIRs)) {
+      Serial.println("PIR #" + String(val) + " = " + String(pirOutput[val]));
+    }
+  } else if (cmd == '2') {
+    //call function that corosponds to command #2
+    //Update PIR state (PIRnumber)
+    if ((val >= 0) && (val < numberOfPIRs)) {
+      getPIRState(val);
+      Serial.println("New value of PIR #" + String(val) + " = " + String(pirOutput[val]));
+    }
+  } else {
+    if (cmdS != "-1") {
+      //debug("Invalid Command");
+    }
+  }
+}
+//Process commands for System menu
+void sysMenu() {
+  char cmd = cmdS.charAt(0); //convert command to an integer
+  int val = valS.toInt(); //convert first command parameter to an integer
+  //int val2 = val2S.toInt(); //convert second command parameter to an integer
+
+  //call function that matches the command
+  if (cmd == refreshMenuChar) {
+    //call function that corosponds to command #0
+    showMenu(4); //display help menu over the serial communications
+
+  } else if (cmd == returnToLastMenuChar) {
+    //call function that corosponds to command #1
+    switchMenus(0);
+
+  } else if (cmd == '1') {
+    //call function that corosponds to command #2
+    //Set run mode (modeID)
+    runMode = val;
+    Serial.println("Run Mode = " + String(runMode));
+
+  } else if (cmd == '2') {
+    //call function that corosponds to command #3
+    //Print available run modes
+
+    /*
+    tableObj t(2);
+    t.titles->addData("ID #");
+    t.titles->addData("Name");
+    t.addRow("0", "Serial Commands only");
+    t.addRow("1", "Min/Max motor speed based on PIR state");
+    t.addRow("2", "Ramp motor speed up or down based on PIR state");
+    delete &t;
+    */
+  } else if (cmd == '3') {
+    //call function that corosponds to command #4
+    //Print current pin setting
+    /*
+    tableObj t(2);
+    t.titles->addData("Name");
+    t.titles->addData("Pin #");
+    t.titles->print();
+    for (int i = 0; i < numberOfMotors; i++) {
+      t.addRow("Motor #" + String(i), String(motorPins[i]));
+    }
+    for (int i = 0; i < numberOfLEDs; i++) {
+      t.addRow("LED #" + String(i), String(LEDPins[i]));
+    }
+    for (int i = 0; i < numberOfPIRs; i++) {
+      t.addRow("PIR #" + String(i), String(PIRPins[i]));
+    }
+    delete &t;
+    */
+  } else if (cmd == '4') {
+    //call function that corosponds to command #5
+    //Set console width (width)
+    if (val > 0) {
+      consoleWidth = val;
+      Serial.println("Console Width = " + String(consoleWidth));
+    }
+  } else if (cmd == '5') {
+    //call function that corosponds to command #6
+    //Set console height (height)
+    if (val > 0) {
+      consoleHeight = val;
+      Serial.println("Console Height = " + String(consoleHeight));
+    }
+  } else if (cmd == '6') {
+    //call function that corosponds to command #7
+    //toggle debug mode
+    debugEnabled = !debugEnabled;
+    if (debugEnabled) {
+      Serial.println("Debug enabled");
+    } else {
+      Serial.println("Debug disabled");
+    }
+  }
+}
+//process commands from the serial port
+void processCmds() {
+  /*
+  NOTICE: the way commands are current parsed can be made much more efficent. The
+  code will be updated if the need arises and time allows for it.
+  */
+
+  //read incoming command with parameters if serial port is available(active)
+  while (Serial.available()) {
+    //debug("Reading command...");
+
+    cmdS = Serial.readStringUntil(seperator); //read command
+    valS = Serial.readStringUntil(seperator); //read first command parameter
+    val2S = Serial.readStringUntil(seperator); //read second command parameter
+    val3S = Serial.readStringUntil(delimiter); //read third command parameter
+
+    debug("Command: " + cmdS);
+    debug("Val: " + valS);
+    debug("Val2: " + val2S);
+    debug("Val3: " + val3S);
+    debug("Current Menu: " + String(currentMenu));
+    debug("");
+
+  }
+
+  switch (currentMenu) {
+    case 0:
+      mainMenu();
+      break;
+    case 1:
+      MotorMenu();
+      break;
+    case 2:
+      LEDMenu();
+      break;
+    case 3:
+      PIRMenu();
+      break;
+    case 4:
+      sysMenu();
+      break;
+    default:
+      //code placed here will run each time the loop function is called (every cpu cycle)
+      break;
+  }
+
+  //reset command and parameters for next cycle
+  cmdS = "-1";
+  valS = "-1";
+  val2S = "-1";
+  val3S = "-1";
+}
+
+//
+//Core System Functions
+//
+
+void initializeMotors(){
+  //configure motors
+  //update motorObj array with default pin values
+  for (int i = 0; i < numberOfMotors; i++) {
+    configureMotor(i, defaultMotorForwardPins[i], defaultMotorReversePins[i],0);
+  }
+}
+void initializeLEDs(){
+  //configure LED's
+  //update LEDPins array with default pin values and set new pins numbers as outputs
+  for (int i = 0; i < numberOfLEDs; i++) {
+    configureLED(i, defaultLEDPins[i]);
+  }
+}
+void initializePIRs(){
+  //configure PIR's
+  //update PIRPins array with default pin values and set new pins numbers as inputs
+  for (int i = 0; i < numberOfPIRs; i++) {
+
+    //debug("Default PIR Pin: " + defaultPIRPins[i]);
+    configurePIR(i, defaultPIRPins[i]);
   }
 }
