@@ -20,9 +20,10 @@ Updated: 2/13/12/2016
 bool debugEnabled = true; //toggles debugging output over serial communications
 
 //constants (values that can not be changed while the system is running)
-const int numberOfMotors = 1; //defines the number of motors in the system
+const int numberOfMotors = 3; //defines the number of motors in the system
 const int numberOfLEDs = 1; //defines the number of LED's in the system
 const int numberOfPIRs = 1; //defines the number of PIR's in the system
+const int numberOfAnalogInputs = 1; //defines the number of AnalogInputs's in the system
 
 //limit variables
 int maxDuration = 1000; //defines the maximum duration in milliseconds motor speed ramping function
@@ -32,7 +33,7 @@ int LEDPins[numberOfLEDs]; //array to store led I/O pin numbers
 int PIRPins[numberOfLEDs]; //array to store PIR I/O pin numbers
 
 //defaults
-int defaultMotorMaxRPM = 150; //defines the default maximum RPM of the motors
+int defaultMotorMaxRPM = 100; //defines the default maximum RPM of the motors
 int defaultLEDPins[] = {2}; //defines the default LED pin numbers (number of pins can differ from value of "numberOfLEDs", extras will be ignored during configuration)
 int defaultMotorForwardPins[] = {3,6,10}; //defines the default Motor Forward pin numbers (number of pins can differ from value of "numberOfMotors", extras will be ignored during configuration)
 int defaultMotorReversePins[] = {5,9,11}; //defines the default Motor Reverse pin numbers (number of pins can differ from value of "numberOfMotors", extras will be ignored during configuration)
@@ -47,6 +48,7 @@ int defaultMotorPolarity = 1; //defines the default polarity for the motors
 //state variables
 bool LEDState[numberOfLEDs]; //array to store current state of the LED's
 bool pirOutput[numberOfPIRs]; //array to store the output of each PIR sensor
+int analogInput[numberOfAnalogInputs];
 
 //motor object
 class motorObj{
@@ -116,6 +118,8 @@ class motorObj{
     }
 };
 motorObj motors[numberOfMotors];
+int delayTime=30;
+int maxDelay=1000;
 
 //command processing variables
 String cmdS; //String to store incoming command
@@ -174,6 +178,11 @@ void setAnalogOutput(int *pinNumber, int output, int *storedOutput) {
 
   //set stored state variable
   *storedOutput = output;
+}
+//get analog pin value
+void getAnalogInput(int pinNumber, int *storedOutput) {
+  //get the analog input and set stored state variable
+  *storedOutput=analogRead(pinNumber);
 }
 //configure new digital output pin
 void configureDigitalOutputPin(int *pinNumber, bool *storedState, bool *defaultState) {
@@ -261,12 +270,17 @@ int rpmToAnalog(int motorNumber, int rpm) {
 //set the speed of a specific motor
 void setMotorSpeed(int motorNumber, int speed) {
   //check if specified motorNumber is valid
+  int s=speed;
   if ((motorNumber >= 0) && (motorNumber < numberOfMotors)) {
-    //check if specified speed is valid
-    if ((speed >= 0) && (speed <= motors[motorNumber].maxRPM)) {
-      //pass specified motor pin number and stored motor speed along with the new state to "setOuput" function
-      setAnalogOutput(motors[motorNumber].motorSpeedPin(), rpmToAnalog(motorNumber, speed), &motors[motorNumber].motorSpeed);
+    //check if specified speed is valid, and set to min/max limit if invalid
+    if (speed < 0) {
+      s=0;
     }
+    if (speed > motors[motorNumber].maxRPM) {
+      s=motors[motorNumber].maxRPM;
+    }
+    //pass specified motor pin number and stored motor speed along with the new state to "setOuput" function
+    setAnalogOutput(motors[motorNumber].motorSpeedPin(), rpmToAnalog(motorNumber, s), &motors[motorNumber].motorSpeed);
   }
 }
 //toggle motor state
@@ -310,6 +324,10 @@ void rampMotorSpeed(int motorNumber, int targetSpeed, int duration) {
         debug("Analog Output: " + String(rpmToAnalog(motorNumber, i)));
         debug("");
         setAnalogOutput(motors[motorNumber].motorSpeedPin(), rpmToAnalog(motorNumber, i), &motors[motorNumber].motorSpeed);
+
+        if ((delayTime > 1) && (delayTime < maxDelay)) {
+          delay(delayTime);
+        }
       }
     } else if (motors[motorNumber].motorSpeed > targetSpeed) {
       //debug("");
@@ -323,11 +341,11 @@ void rampMotorSpeed(int motorNumber, int targetSpeed, int duration) {
         debug("");
         setAnalogOutput(motors[motorNumber].motorSpeedPin(), rpmToAnalog(motorNumber, i), &motors[motorNumber].motorSpeed);
 
-        /*
+
         if ((delayTime > 1) && (delayTime < maxDelay)) {
           delay(delayTime);
         }
-        */
+
       }
     }
   }
@@ -615,8 +633,8 @@ void MotorMenu() {
     //call function that corosponds to command #4
     //Set speed of a Motor (MotorNumber,Speed)
     setMotorSpeed(val, val2);
-    Serial.println("Motor #" + String(val) + "Direction = " + String(motors[val].getMotorPolarity()));
-    Serial.println("Motor #" + String(val) + "Speed = " + String(val2));
+    Serial.println("Motor #" + String(val) + " Direction = " + String(motors[val].getMotorPolarity()));
+    Serial.println("Motor #" + String(val) + " Speed = " + String(val2));
   } else if (cmd == '4') {
     //call function that corosponds to command #5
     //Gradually change a Motors speed (MotorNumber,Speed)

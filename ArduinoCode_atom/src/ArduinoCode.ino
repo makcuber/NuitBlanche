@@ -13,9 +13,11 @@ Date Created: 2/13/12/2016
 //
 //Core System Functions
 //
+int ledPin=3;
 
 //initialize system settings and start basic processes
 void setup() {
+  //cmdsEnabled=false;
   serialControl(); //enable serial port if commands are enabled
 
   initializeMotors();
@@ -26,6 +28,7 @@ void setup() {
   if (cmdsEnabled) {
     showMenu(0);
   }
+  runMode=1;
 }
 
 //repeat the following code block for each cycle of the cpu
@@ -36,7 +39,7 @@ void loop() {
   }
 
   if (runMode > 0) {
-    //debug("PIR State: " + getPIRState(0));
+    debug("PIR State: " + getPIRState(0));
     //debug("");
     //delay(100);
   }
@@ -45,15 +48,7 @@ void loop() {
   if (runMode == 1) {
     //run system using basic on/off control for the motors
     for (int i = 0; i < numberOfMotors; i++) {
-      setMotorState(i, pirOutput[0]); //set the motor state to the output of the PIR sensor
+      setMotorState(i, !pirOutput[0]); //set the motor state to the output of the PIR sensor
     }
-  } else if (runMode == 2) {
-    //run system using ramp up/down speeds for motors
-    //check if the PIR output has changed since the last time it was checked
-    if (pirOutput[0]) {
-      rampMotorSpeedUp(0); //ramp the motor speed
-    } else {
-      rampMotorSpeedDown(0); //ramp the motor speed
-    }
-  }
+  } 
 }
